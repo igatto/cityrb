@@ -22,20 +22,14 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
   // 1. Asset Loading & Texture Extraction
   const baseTexture = await Assets.load(tilesheetUrl)
 
-  // Create a specific texture for the plain ground tile (bottom left)
-  // 134px wide, 128px high
-  const groundTexture = new Texture({
-    source: baseTexture.source,
-    frame: new Rectangle(0, 128, TILE_WIDTH, TILE_HEIGHT)
-  })
+  // Tilesheet v2: margin=2, spacing=4
+  // Tile position: x = 2 + col * (134 + 4), y = 2 + row * (128 + 4)
+  const tileFrame = (col, row) => new Rectangle(2 + col * 138, 2 + row * 132, TILE_WIDTH, TILE_HEIGHT)
 
-  const buildingTexture = new Texture({
-    source: baseTexture.source,
-    frame: new Rectangle(TILE_WIDTH, 0, TILE_WIDTH, TILE_HEIGHT)
-  })
-
-  const roadColTexture = new Texture({ source: baseTexture.source, frame: new Rectangle(134, 128, TILE_WIDTH, TILE_HEIGHT) })
-  const roadRowTexture = new Texture({ source: baseTexture.source, frame: new Rectangle(402, 128, TILE_WIDTH, TILE_HEIGHT) })
+  const groundTexture = new Texture({ source: baseTexture.source, frame: tileFrame(0, 1) })
+  const buildingTexture = new Texture({ source: baseTexture.source, frame: tileFrame(1, 0) })
+  const roadColTexture = new Texture({ source: baseTexture.source, frame: tileFrame(1, 1) })
+  const roadRowTexture = new Texture({ source: baseTexture.source, frame: tileFrame(3, 1) })
 
   const texturesByKey = {
     [BUILDING_KEY]: buildingTexture,
@@ -52,6 +46,7 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
   boardContainer.sortableChildren = true
   camera.addChild(boardContainer)
 
+  const groundSpritesByCell = new Map()
   const placedBuildingsByCell = new Map()
   const pendingPlacements = new Set()
 
@@ -78,6 +73,18 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
     if (!texture) {
       console.error(`Unknown building key: ${buildingKey}`)
       return null
+    }
+
+    // Road tiles: swap the ground sprite's texture in-place to avoid layering
+    // transparency artifacts (the road tile art has transparent pixels at the
+    // top-left diamond edge that would expose the ground sprite beneath).
+    if (buildingKey.startsWith("road_")) {
+      const groundSprite = groundSpritesByCell.get(key)
+      if (groundSprite) {
+        groundSprite.texture = texture
+        placedBuildingsByCell.set(key, groundSprite)
+        return groundSprite
+      }
     }
 
     const sprite = new Sprite(texture)
@@ -225,6 +232,7 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
       sprite.zIndex = col + row // Depth sorting
 
       boardContainer.addChild(sprite)
+      groundSpritesByCell.set(cellKey(row, col), sprite)
     }
   }
 
@@ -305,9 +313,14 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
   }
 
   const clearRoadGhosts = () => {
-    roadState.ghostSprites.forEach(({ sprite }) => {
-      boardContainer.removeChild(sprite)
-      sprite.destroy()
+    roadState.ghostSprites.forEach(({ sprite, originalTexture }) => {
+      if (originalTexture !== undefined) {
+        sprite.texture = originalTexture
+        sprite.alpha = 1
+      } else {
+        boardContainer.removeChild(sprite)
+        sprite.destroy()
+      }
     })
     roadState.ghostSprites.clear()
   }
@@ -320,15 +333,13 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
     const texture = texturesByKey[buildingKey]
     if (!texture) return
 
-    const sprite = new Sprite(texture)
-    const { x, y } = screenPositionFor(row, col)
-    sprite.anchor.set(0.5, 0)
-    sprite.x = x
-    sprite.y = y
-    sprite.zIndex = row + col + 0.5
-    sprite.alpha = 0.5
-    boardContainer.addChild(sprite)
-    roadState.ghostSprites.set(key, { sprite, row, col, buildingKey })
+    const groundSprite = groundSpritesByCell.get(key)
+    if (groundSprite) {
+      const originalTexture = groundSprite.texture
+      groundSprite.texture = texture
+      groundSprite.alpha = 0.6
+      roadState.ghostSprites.set(key, { sprite: groundSprite, row, col, buildingKey, originalTexture })
+    }
   }
 
   const repaintRoadGhosts = () => {
@@ -453,6 +464,7 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
       roadState.originCell = null
       roadState.axis = null
     }
+
 
     stopDragging()
   }
