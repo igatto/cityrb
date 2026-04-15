@@ -1,12 +1,14 @@
 class BuildingPlacementsController < ApplicationController
-  rescue_from ActiveRecord::RecordNotUnique, with: :render_occupied_tile
-
   def index
     render json: BuildingPlacement.order(:row, :col).map { |placement| serialize_placement(placement) }
   end
 
   def create
-    placement = BuildingPlacement.new(building_placement_params)
+    placement = BuildingPlacement.find_or_initialize_by(
+      row: building_placement_params[:row],
+      col: building_placement_params[:col]
+    )
+    placement.building_key = building_placement_params[:building_key]
 
     if placement.save
       render json: serialize_placement(placement), status: :created
@@ -25,7 +27,4 @@ class BuildingPlacementsController < ApplicationController
     placement.slice(:id, :row, :col, :building_key)
   end
 
-  def render_occupied_tile
-    render json: { errors: [ "Tile is already occupied" ] }, status: :unprocessable_entity
-  end
 end
