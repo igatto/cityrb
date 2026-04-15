@@ -22,7 +22,7 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
   // 1. Asset Loading & Texture Extraction
   const baseTexture = await Assets.load(tilesheetUrl)
 
-  // Tilesheet v2: margin=2, spacing=4
+  // Tilesheet v3: margin=2, spacing=4
   // Tile position: x = 2 + col * (134 + 4), y = 2 + row * (128 + 4)
   const tileFrame = (col, row) => new Rectangle(2 + col * 138, 2 + row * 132, TILE_WIDTH, TILE_HEIGHT)
 
