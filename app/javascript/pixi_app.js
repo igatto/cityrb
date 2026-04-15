@@ -6,6 +6,10 @@ const TILE_HEIGHT = 128
 const TILE_HALF_HEIGHT = 67
 const BUILDING_KEY = "tile_2"
 
+// Fine-tune building tile alignment relative to the ground tile
+const BUILDING_OFFSET_X = 0
+const BUILDING_OFFSET_Y = -12
+
 export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacements = [] }) {
   const containerElement = document.getElementById(containerId)
   const app = new Application()
@@ -77,16 +81,16 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
       return null
     }
 
-    // Road tiles: swap the ground sprite's texture in-place to avoid layering
-    // transparency artifacts (the road tile art has transparent pixels at the
-    // top-left diamond edge that would expose the ground sprite beneath).
-    if (buildingKey.startsWith("road_")) {
-      const groundSprite = groundSpritesByCell.get(key)
-      if (groundSprite) {
-        groundSprite.texture = texture
-        placedBuildingsByCell.set(key, { sprite: groundSprite, buildingKey })
-        return groundSprite
-      }
+    // Swap the ground sprite's texture in-place to avoid layering artifacts
+    // (road and building tiles replace the ground rather than sitting above it).
+    const groundSprite = groundSpritesByCell.get(key)
+    if (groundSprite) {
+      const { x: baseX, y: baseY } = screenPositionFor(groundSprite.row, groundSprite.col)
+      groundSprite.texture = texture
+      groundSprite.x = baseX + (buildingKey === BUILDING_KEY ? BUILDING_OFFSET_X : 0)
+      groundSprite.y = baseY + (buildingKey === BUILDING_KEY ? BUILDING_OFFSET_Y : 0)
+      placedBuildingsByCell.set(key, { sprite: groundSprite, buildingKey })
+      return groundSprite
     }
 
     const sprite = new Sprite(texture)
