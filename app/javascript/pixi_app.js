@@ -30,11 +30,13 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
   const buildingTexture = new Texture({ source: baseTexture.source, frame: tileFrame(1, 0) })
   const roadColTexture = new Texture({ source: baseTexture.source, frame: tileFrame(1, 1) })
   const roadRowTexture = new Texture({ source: baseTexture.source, frame: tileFrame(3, 1) })
+  const roadCrossTexture = new Texture({ source: baseTexture.source, frame: tileFrame(0, 2) })
 
   const texturesByKey = {
     [BUILDING_KEY]: buildingTexture,
     road_col: roadColTexture,
     road_row: roadRowTexture,
+    road_cross: roadCrossTexture,
   }
 
   // 4. Orthographic Camera Implementation
@@ -66,7 +68,7 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
   const renderBuilding = ({ row, col, buildingKey }) => {
     const key = cellKey(row, col)
 
-    if (placedBuildingsByCell.has(key)) return placedBuildingsByCell.get(key)
+    if (placedBuildingsByCell.has(key)) return placedBuildingsByCell.get(key).sprite
 
     const texture = texturesByKey[buildingKey]
 
@@ -82,7 +84,7 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
       const groundSprite = groundSpritesByCell.get(key)
       if (groundSprite) {
         groundSprite.texture = texture
-        placedBuildingsByCell.set(key, groundSprite)
+        placedBuildingsByCell.set(key, { sprite: groundSprite, buildingKey })
         return groundSprite
       }
     }
@@ -96,7 +98,7 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
     sprite.zIndex = row + col + 0.5
 
     boardContainer.addChild(sprite)
-    placedBuildingsByCell.set(key, sprite)
+    placedBuildingsByCell.set(key, { sprite, buildingKey })
 
     return sprite
   }
@@ -325,12 +327,25 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
     roadState.ghostSprites.clear()
   }
 
+  const isPerpendicularRoad = (existingKey, newAxis) => {
+    if (newAxis === "col") return existingKey === "road_row"
+    if (newAxis === "row") return existingKey === "road_col"
+    return false
+  }
+
   const handleRoadTilePaint = (row, col, buildingKey) => {
     const key = cellKey(row, col)
-    if (placedBuildingsByCell.has(key)) return
     if (roadState.ghostSprites.has(key)) return
 
-    const texture = texturesByKey[buildingKey]
+    const existing = placedBuildingsByCell.get(key)
+    const effectiveKey = existing && isPerpendicularRoad(existing.buildingKey, roadState.axis)
+      ? "road_cross"
+      : buildingKey
+
+    // Skip non-road, non-crossing occupied cells
+    if (existing && effectiveKey === buildingKey) return
+
+    const texture = texturesByKey[effectiveKey]
     if (!texture) return
 
     const groundSprite = groundSpritesByCell.get(key)
@@ -338,7 +353,15 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
       const originalTexture = groundSprite.texture
       groundSprite.texture = texture
       groundSprite.alpha = 0.6
-      roadState.ghostSprites.set(key, { sprite: groundSprite, row, col, buildingKey, originalTexture })
+      roadState.ghostSprites.set(key, {
+        sprite: groundSprite,
+        row,
+        col,
+        buildingKey: effectiveKey,
+        originalTexture,
+        wasPlaced: !!existing,
+        originalBuildingKey: existing?.buildingKey,
+      })
     }
   }
 
@@ -455,7 +478,7 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
     if (interactionMode === "road" && roadState.ghostSprites.size > 0) {
       roadState.ghostSprites.forEach(({ sprite, row, col, buildingKey }) => {
         sprite.alpha = 1
-        placedBuildingsByCell.set(cellKey(row, col), sprite)
+        placedBuildingsByCell.set(cellKey(row, col), { sprite, buildingKey })
         persistBuildingPlacement({ row, col, buildingKey }).catch((error) => {
           console.error("Failed to persist road placement", error)
         })
