@@ -137,6 +137,10 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
 
     if (interactionMode !== "build") return
     if (!dragState.tapEligible || placedBuildingsByCell.has(key) || pendingPlacements.has(key)) return
+    if (!hasAdjacentRoad(row, col)) {
+      flashRejection(row, col)
+      return
+    }
 
     pendingPlacements.add(key)
 
@@ -331,10 +335,38 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
     roadState.ghostSprites.clear()
   }
 
+  const isRoadKey = (key) => key === "road_col" || key === "road_row" || key === "road_cross"
+
   const isPerpendicularRoad = (existingKey, newAxis) => {
     if (newAxis === "col") return existingKey === "road_row"
     if (newAxis === "row") return existingKey === "road_col"
     return false
+  }
+
+  const hasAdjacentRoad = (row, col) => {
+    const neighbors = [
+      [row - 1, col],
+      [row + 1, col],
+      [row, col - 1],
+      [row, col + 1],
+    ]
+
+    return neighbors.some(([neighborRow, neighborCol]) => {
+      if (neighborRow < 0 || neighborRow >= BOARD_SIZE || neighborCol < 0 || neighborCol >= BOARD_SIZE) return false
+
+      const cell = placedBuildingsByCell.get(cellKey(neighborRow, neighborCol))
+      return cell && isRoadKey(cell.buildingKey)
+    })
+  }
+
+  const flashRejection = (row, col) => {
+    const sprite = groundSpritesByCell.get(cellKey(row, col))
+    if (!sprite) return
+
+    sprite.tint = 0xff4444
+    setTimeout(() => {
+      sprite.tint = 0xffffff
+    }, 300)
   }
 
   const handleRoadTilePaint = (row, col, buildingKey) => {

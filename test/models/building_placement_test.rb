@@ -1,8 +1,15 @@
 require "test_helper"
 
 class BuildingPlacementTest < ActiveSupport::TestCase
-  test "is valid with in-bounds coordinates and supported building key" do
+  test "is valid for a building adjacent to a road" do
+    BuildingPlacement.create!(row: 3, col: 3, building_key: "road_row")
     placement = BuildingPlacement.new(row: 3, col: 4, building_key: "tile_2")
+
+    assert placement.valid?
+  end
+
+  test "allows roads without adjacent roads" do
+    placement = BuildingPlacement.new(row: 3, col: 4, building_key: "road_row")
 
     assert placement.valid?
   end
@@ -22,7 +29,15 @@ class BuildingPlacementTest < ActiveSupport::TestCase
     assert_includes placement.errors[:building_key], "is not included in the list"
   end
 
+  test "rejects a building without an adjacent road" do
+    placement = BuildingPlacement.new(row: 3, col: 4, building_key: "tile_2")
+
+    assert_not placement.valid?
+    assert_includes placement.errors[:base], "must be placed adjacent to a road"
+  end
+
   test "rejects duplicate placements on the same tile" do
+    BuildingPlacement.create!(row: 2, col: 4, building_key: "road_row")
     BuildingPlacement.create!(row: 2, col: 5, building_key: "tile_2")
     duplicate = BuildingPlacement.new(row: 2, col: 5, building_key: "tile_2")
 
