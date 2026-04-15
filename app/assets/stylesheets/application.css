@@ -9,11 +9,53 @@
  * Consider organizing styles into separate files for maintainability.
  */
 
-#pixi-canvas {
+.board-shell {
+  position: relative;
   height: 600px;
   width: 800px;
 }
 
+#pixi-canvas {
+  height: 100%;
+  width: 100%;
+}
+
 #pixi-canvas canvas {
   display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.board-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.board-button {
+  border: 1px solid rgba(15, 23, 42, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f172a;
+  cursor: pointer;
+  font: inherit;
+  padding: 0.45rem 0.9rem;
+}
+
+.board-button.is-active {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #f8fafc;
+}
+
+.board-mode {
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.78);
+  color: #f8fafc;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.75rem;
 }

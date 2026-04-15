@@ -1,6 +1,22 @@
-<%= tag.div id: "pixi-canvas",
+<%= tag.div class: "board-shell",
             data: {
               controller: "pixi",
               pixi_tilesheet_url_value: image_path("tilesheet.png"),
               pixi_building_placements_value: @building_placements.as_json(only: [:row, :col, :building_key])
-            } %>
+            } do %>
+  <%= tag.div id: "pixi-canvas", data: { pixi_target: "canvas" } %>
+
+  <div class="board-controls">
+    <button type="button"
+            class="board-button"
+            data-action="pixi#toggleBuildMode"
+            data-pixi-target="buildingButton"
+            aria-pressed="false">
+      Building
+    </button>
+
+    <div class="board-mode" data-pixi-target="modeLabel" aria-live="polite">
+      Mode: Pan
+    </div>
+  </div>
+<% end %>

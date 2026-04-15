@@ -9,6 +9,7 @@ const BUILDING_KEY = "tile_2"
 export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacements = [] }) {
   const containerElement = document.getElementById(containerId)
   const app = new Application()
+  let interactionMode = "pan"
 
   await app.init({
     background: "#1099bb",
@@ -108,6 +109,7 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
   const handleTileTap = async (row, col) => {
     const key = cellKey(row, col)
 
+    if (interactionMode !== "build") return
     if (!dragState.tapEligible || placedBuildingsByCell.has(key) || pendingPlacements.has(key)) return
 
     pendingPlacements.add(key)
@@ -205,6 +207,7 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
     hasMoved: false,
     isDragging: false,
     lastPointerX: 0,
+    pointerIsDown: false,
     lastPointerY: 0,
     startPointerX: 0,
     startPointerY: 0,
@@ -217,28 +220,35 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
   app.canvas.style.webkitUserSelect = "none"
 
   const updateCursor = () => {
+    if (interactionMode === "build") {
+      app.canvas.style.cursor = "crosshair"
+      return
+    }
+
     app.canvas.style.cursor = dragState.isDragging ? "grabbing" : "grab"
   }
 
   const stopDragging = () => {
+    dragState.pointerIsDown = false
     dragState.hasMoved = false
     dragState.isDragging = false
     updateCursor()
   }
 
   const handlePointerDown = (event) => {
+    dragState.pointerIsDown = true
     dragState.hasMoved = false
-    dragState.isDragging = true
     dragState.tapEligible = true
     dragState.lastPointerX = event.clientX
     dragState.lastPointerY = event.clientY
     dragState.startPointerX = event.clientX
     dragState.startPointerY = event.clientY
+    dragState.isDragging = interactionMode === "pan"
     updateCursor()
   }
 
   const handlePointerMove = (event) => {
-    if (!dragState.isDragging) return
+    if (!dragState.pointerIsDown) return
 
     const currentX = event.clientX
     const currentY = event.clientY
@@ -252,8 +262,16 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
 
       dragState.hasMoved = true
       dragState.tapEligible = false
-      hasInteracted = true
+      if (interactionMode === "pan") {
+        hasInteracted = true
+      }
     }
+
+    if (interactionMode !== "pan") {
+      return
+    }
+
+    if (!dragState.hasMoved || !dragState.isDragging) return
 
     const dx = currentX - dragState.lastPointerX
     const dy = currentY - dragState.lastPointerY
@@ -263,6 +281,13 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
 
     dragState.lastPointerX = currentX
     dragState.lastPointerY = currentY
+  }
+
+  const setInteractionMode = (mode) => {
+    if (!["pan", "build"].includes(mode)) return
+
+    interactionMode = mode
+    stopDragging()
   }
 
   const preventBrowserDrag = (event) => event.preventDefault()
@@ -308,6 +333,8 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
     window.removeEventListener("pointerup", stopDragging)
     window.removeEventListener("pointercancel", stopDragging)
   }
+
+  app.setInteractionMode = setInteractionMode
 
   return app
 }
