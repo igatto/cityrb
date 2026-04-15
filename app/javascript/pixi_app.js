@@ -13,7 +13,7 @@ export async function initPixiApp(containerId, tilesheetUrl) {
 
   // 1. Asset Loading & Texture Extraction
   const baseTexture = await Assets.load(tilesheetUrl)
-  
+
   // Create a specific texture for the plain ground tile (bottom left)
   // 134px wide, 128px high
   const groundTexture = new Texture({
@@ -38,25 +38,63 @@ export async function initPixiApp(containerId, tilesheetUrl) {
   for (let row = 0; row < size; row++) {
     for (let col = 0; col < size; col++) {
       const sprite = new Sprite(groundTexture)
-      
+
       // Top tip of the diamond
       sprite.anchor.set(0.5, 0)
-      
+
       // 2. Isometric Coordinate System Math
       const screenX = (col - row) * (W / 2)
       const screenY = (col + row) * (h / 2)
-      
+
       sprite.x = screenX
       sprite.y = screenY
       sprite.zIndex = col + row // Depth sorting
-      
+
       boardContainer.addChild(sprite)
     }
   }
 
-  // Center the board visually within the canvas
-  boardContainer.x = app.screen.width / 2
-  boardContainer.y = 100
+  let hasInteracted = false
+
+  const layoutCamera = ({ resetZoom = false } = {}) => {
+    const boardBounds = boardContainer.getLocalBounds()
+    const horizontalPadding = 24
+    const verticalPadding = 24
+    const initialZoomOut = 0.92
+    const availableWidth = Math.max(1, app.screen.width - horizontalPadding * 2)
+    const availableHeight = Math.max(1, app.screen.height - verticalPadding * 2)
+
+    if (resetZoom) {
+      const fitScale = Math.min(
+        availableWidth / boardBounds.width,
+        availableHeight / boardBounds.height,
+        1,
+      )
+      camera.scale.set(fitScale * initialZoomOut)
+    }
+
+    const scaledBoardWidth = boardBounds.width * camera.scale.x
+    const scaledBoardHeight = boardBounds.height * camera.scale.y
+
+    camera.x = Math.max(
+      horizontalPadding - boardBounds.x * camera.scale.x,
+      (app.screen.width - scaledBoardWidth) / 2 - boardBounds.x * camera.scale.x,
+    )
+
+    camera.y = Math.max(
+      verticalPadding - boardBounds.y * camera.scale.y,
+      (app.screen.height - scaledBoardHeight) / 2 - boardBounds.y * camera.scale.y,
+    )
+  }
+
+  // Start zoomed to fit so the initial view matches the "zoomed out a bit" state.
+  layoutCamera({ resetZoom: true })
+
+  const handleResize = () => {
+    layoutCamera({ resetZoom: !hasInteracted })
+  }
+
+  app.renderer.on("resize", handleResize)
 
   const dragState = {
     dragThreshold: 3,
@@ -107,6 +145,7 @@ export async function initPixiApp(containerId, tilesheetUrl) {
       if (distance < dragState.dragThreshold) return
 
       dragState.hasMoved = true
+      hasInteracted = true
     }
 
     const dx = currentX - dragState.lastPointerX
@@ -131,29 +170,31 @@ export async function initPixiApp(containerId, tilesheetUrl) {
 
   app.canvas.addEventListener("wheel", (e) => {
     e.preventDefault()
-    
+    hasInteracted = true
+
     const zoomFactor = 1.1
     const scaleChange = e.deltaY < 0 ? 1 / zoomFactor : zoomFactor
-    
+
     // Zoom relative to pointer
     const rect = app.canvas.getBoundingClientRect()
     const pointerX = e.clientX - rect.left
     const pointerY = e.clientY - rect.top
-    
+
     // Convert pointer coords to camera local space
     const localX = (pointerX - camera.x) / camera.scale.x
     const localY = (pointerY - camera.y) / camera.scale.y
-    
+
     // Apply zoom
     camera.scale.x /= scaleChange
     camera.scale.y /= scaleChange
-    
+
     // Adjust camera position to keep pointer stationary
     camera.x = pointerX - localX * camera.scale.x
     camera.y = pointerY - localY * camera.scale.y
   }, { passive: false })
 
   app.cleanup = () => {
+    app.renderer.off("resize", handleResize)
     app.canvas.removeEventListener("dragstart", preventBrowserDrag)
     app.canvas.removeEventListener("pointerdown", handlePointerDown)
     window.removeEventListener("pointermove", handlePointerMove)
