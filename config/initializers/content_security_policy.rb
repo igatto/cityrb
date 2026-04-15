@@ -20,8 +20,8 @@ Rails.application.configure do
     # Allow PixiJS to create blob: URLs for worker scripts
     policy.worker_src  :self, :blob
 
-    # Allow WebGL/WebGPU canvas data extraction
-    policy.connect_src :self, :https, :blob
+    # Pixi may resolve tiny in-memory data URLs through fetch/connect paths.
+    policy.connect_src :self, :https, :data, :blob
   end
 
   # Nonce for importmap inline script tag

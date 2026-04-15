@@ -128,13 +128,46 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
     }
   }
 
+  const resolveCellFromClientPoint = (clientX, clientY) => {
+    const rect = app.canvas.getBoundingClientRect()
+
+    if (
+      clientX < rect.left ||
+      clientX > rect.right ||
+      clientY < rect.top ||
+      clientY > rect.bottom
+    ) {
+      return null
+    }
+
+    const canvasX = clientX - rect.left
+    const canvasY = clientY - rect.top
+    const boardX = (canvasX - camera.x) / camera.scale.x
+    const boardY = (canvasY - camera.y) / camera.scale.y
+    const diagonalX = boardX / (TILE_WIDTH / 2)
+    const diagonalY = boardY / (TILE_HALF_HEIGHT / 2)
+    const col = Math.round((diagonalX + diagonalY) / 2)
+    const row = Math.round((diagonalY - diagonalX) / 2)
+
+    if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) return null
+
+    const { x: tileX, y: tileY } = screenPositionFor(row, col)
+    const tileLocalX = boardX - tileX
+    const tileLocalY = boardY - tileY
+    const normalizedX = Math.abs(tileLocalX) / (TILE_WIDTH / 2)
+    const normalizedY = Math.abs(tileLocalY - TILE_HEIGHT / 2) / (TILE_HEIGHT / 2)
+
+    if (normalizedX + normalizedY > 1) return null
+
+    return { row, col }
+  }
+
   for (let row = 0; row < BOARD_SIZE; row++) {
     for (let col = 0; col < BOARD_SIZE; col++) {
       const sprite = new Sprite(groundTexture)
 
       // Top tip of the diamond
       sprite.anchor.set(0.5, 0)
-      sprite.eventMode = "static"
       sprite.row = row
       sprite.col = col
 
@@ -144,9 +177,6 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
       sprite.x = screenX
       sprite.y = screenY
       sprite.zIndex = col + row // Depth sorting
-      sprite.on("pointertap", () => {
-        handleTileTap(sprite.row, sprite.col)
-      })
 
       boardContainer.addChild(sprite)
     }
@@ -283,6 +313,18 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
     dragState.lastPointerY = currentY
   }
 
+  const handlePointerUp = (event) => {
+    if (interactionMode === "build" && dragState.pointerIsDown && dragState.tapEligible) {
+      const cell = resolveCellFromClientPoint(event.clientX, event.clientY)
+
+      if (cell) {
+        handleTileTap(cell.row, cell.col)
+      }
+    }
+
+    stopDragging()
+  }
+
   const setInteractionMode = (mode) => {
     if (!["pan", "build"].includes(mode)) return
 
@@ -295,7 +337,7 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
   app.canvas.addEventListener("dragstart", preventBrowserDrag)
   app.canvas.addEventListener("pointerdown", handlePointerDown)
   window.addEventListener("pointermove", handlePointerMove)
-  window.addEventListener("pointerup", stopDragging)
+  window.addEventListener("pointerup", handlePointerUp)
   window.addEventListener("pointercancel", stopDragging)
 
   // Zooming
@@ -330,7 +372,7 @@ export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacement
     app.canvas.removeEventListener("dragstart", preventBrowserDrag)
     app.canvas.removeEventListener("pointerdown", handlePointerDown)
     window.removeEventListener("pointermove", handlePointerMove)
-    window.removeEventListener("pointerup", stopDragging)
+    window.removeEventListener("pointerup", handlePointerUp)
     window.removeEventListener("pointercancel", stopDragging)
   }
 
