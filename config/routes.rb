@@ -9,5 +9,6 @@ Rails.application.routes.draw do
   # get "manifest" => "rails/pwa#manifest", as: :pwa_manifest
   # get "service-worker" => "rails/pwa#service_worker", as: :pwa_service_worker
 
+  resources :building_placements, only: [:index, :create], defaults: { format: :json }
   root "pages#index"
 end

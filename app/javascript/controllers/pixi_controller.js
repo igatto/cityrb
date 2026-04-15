@@ -3,11 +3,15 @@ import { initPixiApp } from "pixi_app"
 
 export default class extends Controller {
   static values = {
+    buildingPlacements: Array,
     tilesheetUrl: String
   }
 
   async connect() {
-    this.app = await initPixiApp(this.element.id, this.tilesheetUrlValue)
+    this.app = await initPixiApp(this.element.id, {
+      buildingPlacements: this.buildingPlacementsValue,
+      tilesheetUrl: this.tilesheetUrlValue
+    })
   }
 
   disconnect() {

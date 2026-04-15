@@ -1,6 +1,12 @@
 import { Application, Assets, Texture, Rectangle, Container, Sprite } from "pixi.js"
 
-export async function initPixiApp(containerId, tilesheetUrl) {
+const BOARD_SIZE = 10
+const TILE_WIDTH = 134
+const TILE_HEIGHT = 128
+const TILE_HALF_HEIGHT = 67
+const BUILDING_KEY = "tile_2"
+
+export async function initPixiApp(containerId, { tilesheetUrl, buildingPlacements = [] }) {
   const containerElement = document.getElementById(containerId)
   const app = new Application()
 
@@ -18,8 +24,17 @@ export async function initPixiApp(containerId, tilesheetUrl) {
   // 134px wide, 128px high
   const groundTexture = new Texture({
     source: baseTexture.source,
-    frame: new Rectangle(0, 128, 134, 128)
+    frame: new Rectangle(0, 128, TILE_WIDTH, TILE_HEIGHT)
   })
+
+  const buildingTexture = new Texture({
+    source: baseTexture.source,
+    frame: new Rectangle(TILE_WIDTH, 0, TILE_WIDTH, TILE_HEIGHT)
+  })
+
+  const texturesByKey = {
+    [BUILDING_KEY]: buildingTexture
+  }
 
   // 4. Orthographic Camera Implementation
   const camera = new Container()
@@ -30,29 +45,118 @@ export async function initPixiApp(containerId, tilesheetUrl) {
   boardContainer.sortableChildren = true
   camera.addChild(boardContainer)
 
-  const size = 10
-  const W = 134
-  const H = 128
-  const h = 67 // Approximate half height
+  const placedBuildingsByCell = new Map()
+  const pendingPlacements = new Set()
 
-  for (let row = 0; row < size; row++) {
-    for (let col = 0; col < size; col++) {
+  const cellKey = (row, col) => `${row},${col}`
+  const screenPositionFor = (row, col) => ({
+    x: (col - row) * (TILE_WIDTH / 2),
+    y: (col + row) * (TILE_HALF_HEIGHT / 2),
+  })
+
+  const renderBuilding = ({ row, col, buildingKey }) => {
+    const key = cellKey(row, col)
+
+    if (placedBuildingsByCell.has(key)) return placedBuildingsByCell.get(key)
+
+    const texture = texturesByKey[buildingKey]
+
+    if (!texture) {
+      console.error(`Unknown building key: ${buildingKey}`)
+      return null
+    }
+
+    const sprite = new Sprite(texture)
+    const { x, y } = screenPositionFor(row, col)
+
+    sprite.anchor.set(0.5, 0)
+    sprite.x = x
+    sprite.y = y
+    sprite.zIndex = row + col + 0.5
+
+    boardContainer.addChild(sprite)
+    placedBuildingsByCell.set(key, sprite)
+
+    return sprite
+  }
+
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
+
+  const persistBuildingPlacement = async ({ row, col, buildingKey }) => {
+    const response = await fetch("/building_placements", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrfToken,
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        building_placement: { row, col, building_key: buildingKey }
+      }),
+    })
+
+    const payload = await response.json().catch(() => ({}))
+
+    if (!response.ok) {
+      const details = payload.errors?.join(", ") || `Request failed with status ${response.status}`
+      throw new Error(details)
+    }
+
+    return payload
+  }
+
+  const handleTileTap = async (row, col) => {
+    const key = cellKey(row, col)
+
+    if (!dragState.tapEligible || placedBuildingsByCell.has(key) || pendingPlacements.has(key)) return
+
+    pendingPlacements.add(key)
+
+    try {
+      const placement = await persistBuildingPlacement({ row, col, buildingKey: BUILDING_KEY })
+      renderBuilding({
+        row: placement.row,
+        col: placement.col,
+        buildingKey: placement.building_key,
+      })
+    } catch (error) {
+      console.error("Failed to persist building placement", error)
+    } finally {
+      pendingPlacements.delete(key)
+    }
+  }
+
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
       const sprite = new Sprite(groundTexture)
 
       // Top tip of the diamond
       sprite.anchor.set(0.5, 0)
+      sprite.eventMode = "static"
+      sprite.row = row
+      sprite.col = col
 
       // 2. Isometric Coordinate System Math
-      const screenX = (col - row) * (W / 2)
-      const screenY = (col + row) * (h / 2)
+      const { x: screenX, y: screenY } = screenPositionFor(row, col)
 
       sprite.x = screenX
       sprite.y = screenY
       sprite.zIndex = col + row // Depth sorting
+      sprite.on("pointertap", () => {
+        handleTileTap(sprite.row, sprite.col)
+      })
 
       boardContainer.addChild(sprite)
     }
   }
+
+  buildingPlacements.forEach((placement) => {
+    renderBuilding({
+      row: placement.row,
+      col: placement.col,
+      buildingKey: placement.building_key,
+    })
+  })
 
   let hasInteracted = false
 
@@ -104,6 +208,7 @@ export async function initPixiApp(containerId, tilesheetUrl) {
     lastPointerY: 0,
     startPointerX: 0,
     startPointerY: 0,
+    tapEligible: true,
   }
 
   app.canvas.style.cursor = "grab"
@@ -124,6 +229,7 @@ export async function initPixiApp(containerId, tilesheetUrl) {
   const handlePointerDown = (event) => {
     dragState.hasMoved = false
     dragState.isDragging = true
+    dragState.tapEligible = true
     dragState.lastPointerX = event.clientX
     dragState.lastPointerY = event.clientY
     dragState.startPointerX = event.clientX
@@ -145,6 +251,7 @@ export async function initPixiApp(containerId, tilesheetUrl) {
       if (distance < dragState.dragThreshold) return
 
       dragState.hasMoved = true
+      dragState.tapEligible = false
       hasInteracted = true
     }
 

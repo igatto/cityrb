@@ -1,4 +1,6 @@
-<div id="pixi-canvas"
-     data-controller="pixi"
-     data-pixi-tilesheet-url-value="<%= image_path('tilesheet.png') %>">
-</div>
+<%= tag.div id: "pixi-canvas",
+            data: {
+              controller: "pixi",
+              pixi_tilesheet_url_value: image_path("tilesheet.png"),
+              pixi_building_placements_value: @building_placements.as_json(only: [:row, :col, :building_key])
+            } %>
